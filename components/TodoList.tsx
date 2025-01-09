@@ -1,44 +1,82 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import Header from './Header'
 import Footer from './Footer'
+import { db } from '@/lib/firebase'
+import { collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot, query, orderBy } from 'firebase/firestore'
 
 interface Todo {
-  id: number
+  id: string
   text: string
   completed: boolean
+  createdAt: number
 }
 
 export default function TodoList() {
   const [todos, setTodos] = useState<Todo[]>([])
   const [newTodo, setNewTodo] = useState('')
-  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
-  const addTodo = () => {
+  useEffect(() => {
+    const q = query(collection(db, 'todos'), orderBy('createdAt', 'desc'))
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const todosData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Todo[]
+      setTodos(todosData)
+    })
+
+    return () => unsubscribe()
+  }, [])
+
+  const addTodo = async () => {
     if (newTodo.trim()) {
-      setTodos([...todos, { id: Date.now(), text: newTodo, completed: false }])
-      setNewTodo('')
+      try {
+        await addDoc(collection(db, 'todos'), {
+          text: newTodo,
+          completed: false,
+          createdAt: Date.now()
+        })
+        setNewTodo('')
+      } catch (error) {
+        console.error('Error adding todo:', error)
+      }
     }
   }
 
-  const updateTodo = (id: number, newText: string) => {
-    setTodos(todos.map(todo => 
-      todo.id === id ? { ...todo, text: newText } : todo
-    ))
-    setEditingId(null)
+  const updateTodo = async (id: string, newText: string) => {
+    try {
+      const todoRef = doc(db, 'todos', id)
+      await updateDoc(todoRef, {
+        text: newText
+      })
+      setEditingId(null)
+    } catch (error) {
+      console.error('Error updating todo:', error)
+    }
   }
 
-  const deleteTodo = (id: number) => {
-    setTodos(todos.filter(todo => todo.id !== id))
+  const deleteTodo = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'todos', id))
+    } catch (error) {
+      console.error('Error deleting todo:', error)
+    }
   }
 
-  const toggleComplete = (id: number) => {
-    setTodos(todos.map(todo =>
-      todo.id === id ? { ...todo, completed: !todo.completed } : todo
-    ))
+  const toggleComplete = async (id: string, completed: boolean) => {
+    try {
+      const todoRef = doc(db, 'todos', id)
+      await updateDoc(todoRef, {
+        completed: !completed
+      })
+    } catch (error) {
+      console.error('Error toggling todo:', error)
+    }
   }
 
   return (
@@ -62,7 +100,7 @@ export default function TodoList() {
                 <input
                   type="checkbox"
                   checked={todo.completed}
-                  onChange={() => toggleComplete(todo.id)}
+                  onChange={() => toggleComplete(todo.id, todo.completed)}
                   className="h-4 w-4"
                 />
                 {editingId === todo.id ? (
